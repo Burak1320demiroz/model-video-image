@@ -27,6 +27,33 @@ class FluxImageGenerator:
         self.model_id = model_id
         self._pipe: Optional["DiffusionPipeline"] = None
 
+    def _configure_pipe_memory(self, pipe: "DiffusionPipeline") -> None:
+        if DEVICE != "cuda":
+            pipe.to(DEVICE)
+            return
+
+        # 24GB cards can OOM while moving the full FLUX pipeline to CUDA.
+        # CPU offload keeps only active components on GPU.
+        try:
+            pipe.enable_model_cpu_offload()
+            logger.info("flux cpu offload enabled")
+        except Exception:
+            logger.warning("flux cpu offload unavailable, falling back to full cuda move")
+            pipe.to(DEVICE)
+
+        # Extra memory savers for high resolutions.
+        try:
+            pipe.enable_attention_slicing("max")
+            logger.info("flux attention slicing enabled")
+        except Exception:
+            logger.warning("flux attention slicing not available")
+        try:
+            pipe.vae.enable_tiling()
+            pipe.vae.enable_slicing()
+            logger.info("flux vae tiling/slicing enabled")
+        except Exception:
+            logger.warning("flux vae tiling/slicing not available")
+
     def _load(self) -> "DiffusionPipeline":
         if self._pipe is None:
             logger.info("loading flux model | model_id=%s | device=%s", self.model_id, DEVICE)
@@ -37,7 +64,7 @@ class FluxImageGenerator:
                 self.model_id,
                 torch_dtype=DTYPE,
             )
-            pipe = pipe.to(DEVICE)
+            self._configure_pipe_memory(pipe)
             self._pipe = pipe
             logger.info("flux model loaded | took=%.2fs", time.perf_counter() - started)
         else:
@@ -57,8 +84,8 @@ class FluxImageGenerator:
         output_path: str = "output/image.png",
         num_inference_steps: int = 4,
         guidance_scale: float = 0.0,
-        height: int = 1024,
-        width: int = 1024,
+        height: int = 768,
+        width: int = 768,
         seed: Optional[int] = None,
     ) -> str:
         logger.info(
