@@ -7,6 +7,7 @@ from typing import Optional
 
 import torch
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -21,6 +22,13 @@ logging.basicConfig(
 logger = logging.getLogger("api")
 
 app = FastAPI(title="FLUX + LTX API", version="1.0.0")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 output_dir = Path("output")
 output_dir.mkdir(parents=True, exist_ok=True)
@@ -68,6 +76,16 @@ def on_startup() -> None:
 @app.get("/health")
 def health() -> dict:
     logger.info("health check | %s", gpu_stats())
+    return {"status": "ok"}
+
+
+@app.get("/")
+def root() -> dict:
+    return {"service": "FLUX + LTX API", "status": "ok"}
+
+
+@app.get("/api/status")
+def api_status() -> dict:
     return {"status": "ok"}
 
 
