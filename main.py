@@ -1,5 +1,6 @@
 import gc
 import logging
+import re
 import time
 import uuid
 from threading import Lock
@@ -43,11 +44,21 @@ MODEL_LOCK = Lock()
 class ImageReq(BaseModel):
     prompt: str = Field(..., min_length=1)
     seed: Optional[int] = None
+    project_name: str = Field("default")
 
 
 class VideoReq(BaseModel):
     image: str = Field(..., min_length=1, description="Path like output/image.png")
     prompt: str = Field(..., min_length=1)
+    project_name: str = Field("default")
+
+def get_safe_project_dir(base_dir: Path, proj_name: str) -> Path:
+    safe_name = re.sub(r'[^a-zA-Z0-9_\-]', '_', proj_name)
+    if not safe_name:
+        safe_name = "default"
+    p = base_dir / safe_name
+    p.mkdir(parents=True, exist_ok=True)
+    return p
 
 
 def release_vram() -> None:
@@ -102,20 +113,27 @@ def generate_image(req: ImageReq) -> dict:
         release_vram()
         try:
             logger.info("generate-image flux.generate start | %s", gpu_stats())
+            
+            p_dir = get_safe_project_dir(output_dir, req.project_name)
+            safe_name = p_dir.name
             file_name = f"img_{uuid.uuid4().hex[:8]}.png"
+            
             image_path = flux.generate(
                 prompt=req.prompt,
-                output_path=f"output/{file_name}",
+                output_path=str(p_dir / file_name),
                 seed=req.seed,
             )
+            # URL friendly path starting with output/
+            rel_path = f"output/{safe_name}/{file_name}"
+            
             elapsed = time.perf_counter() - started
             logger.info(
                 "generate-image success | image=%s | took=%.2fs | %s",
-                image_path,
+                rel_path,
                 elapsed,
                 gpu_stats(),
             )
-            return {"image_url": image_path}
+            return {"image_url": rel_path}
         except Exception as exc:
             logger.exception("generate-image failed | %s", gpu_stats())
             raise HTTPException(status_code=500, detail=f"image generation failed: {exc}") from exc
@@ -143,20 +161,26 @@ def generate_video(req: VideoReq) -> dict:
         release_vram()
         try:
             logger.info("generate-video ltx.generate start | %s", gpu_stats())
+            
+            p_dir = get_safe_project_dir(output_dir, req.project_name)
+            safe_name = p_dir.name
             file_name = f"vid_{uuid.uuid4().hex[:8]}.mp4"
+            
             video_path = ltx.generate(
                 image_path=str(image_path),
                 prompt=req.prompt,
-                output_path=f"output/{file_name}",
+                output_path=str(p_dir / file_name),
             )
+            rel_path = f"output/{safe_name}/{file_name}"
+            
             elapsed = time.perf_counter() - started
             logger.info(
                 "generate-video success | video=%s | took=%.2fs | %s",
-                video_path,
+                rel_path,
                 elapsed,
                 gpu_stats(),
             )
-            return {"video_url": video_path}
+            return {"video_url": rel_path}
         except Exception as exc:
             logger.exception("generate-video failed | %s", gpu_stats())
             raise HTTPException(status_code=500, detail=f"video generation failed: {exc}") from exc
