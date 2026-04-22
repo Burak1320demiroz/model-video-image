@@ -168,10 +168,10 @@ class LtxVideoGenerator:
         image_path: str,
         prompt: str,
         output_path: str = "output/video.mp4",
-        fps: int = 16,
-        frames: int = 49,
-        num_inference_steps: int = 12,
-        guidance_scale: float = 1.0,
+        fps: int = 20,
+        frames: int = 65,
+        num_inference_steps: int = 20,
+        guidance_scale: float = 2.2,
     ) -> str:
         """
         Generate video from a source image with LTX.
