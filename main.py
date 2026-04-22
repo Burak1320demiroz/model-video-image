@@ -1,6 +1,7 @@
 import gc
 import logging
 import time
+import uuid
 from threading import Lock
 from pathlib import Path
 from typing import Optional
@@ -101,9 +102,10 @@ def generate_image(req: ImageReq) -> dict:
         release_vram()
         try:
             logger.info("generate-image flux.generate start | %s", gpu_stats())
+            file_name = f"img_{uuid.uuid4().hex[:8]}.png"
             image_path = flux.generate(
                 prompt=req.prompt,
-                output_path="output/image.png",
+                output_path=f"output/{file_name}",
                 seed=req.seed,
             )
             elapsed = time.perf_counter() - started
@@ -141,10 +143,11 @@ def generate_video(req: VideoReq) -> dict:
         release_vram()
         try:
             logger.info("generate-video ltx.generate start | %s", gpu_stats())
+            file_name = f"vid_{uuid.uuid4().hex[:8]}.mp4"
             video_path = ltx.generate(
                 image_path=str(image_path),
                 prompt=req.prompt,
-                output_path="output/video.mp4",
+                output_path=f"output/{file_name}",
             )
             elapsed = time.perf_counter() - started
             logger.info(
