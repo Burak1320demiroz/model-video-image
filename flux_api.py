@@ -1,4 +1,6 @@
 import gc
+import logging
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
@@ -12,6 +14,7 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 DTYPE = torch.float16 if DEVICE == "cuda" else torch.float32
 OUTPUT_DIR = Path("output")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+logger = logging.getLogger("flux")
 
 
 class FluxImageGenerator:
@@ -26,6 +29,8 @@ class FluxImageGenerator:
 
     def _load(self) -> "DiffusionPipeline":
         if self._pipe is None:
+            logger.info("loading flux model | model_id=%s | device=%s", self.model_id, DEVICE)
+            started = time.perf_counter()
             from diffusers import DiffusionPipeline
 
             pipe = DiffusionPipeline.from_pretrained(
@@ -34,9 +39,13 @@ class FluxImageGenerator:
             )
             pipe = pipe.to(DEVICE)
             self._pipe = pipe
+            logger.info("flux model loaded | took=%.2fs", time.perf_counter() - started)
+        else:
+            logger.info("reusing cached flux model")
         return self._pipe
 
     def unload(self) -> None:
+        logger.info("unloading flux model")
         self._pipe = None
         gc.collect()
         if DEVICE == "cuda":
@@ -52,6 +61,16 @@ class FluxImageGenerator:
         width: int = 1024,
         seed: Optional[int] = None,
     ) -> str:
+        logger.info(
+            "flux generate start | steps=%d guidance=%.2f size=%dx%d seed=%s prompt_len=%d",
+            num_inference_steps,
+            guidance_scale,
+            width,
+            height,
+            seed,
+            len(prompt),
+        )
+        started = time.perf_counter()
         pipe = self._load()
         generator = None
         if seed is not None:
@@ -69,4 +88,5 @@ class FluxImageGenerator:
         output = Path(output_path)
         output.parent.mkdir(parents=True, exist_ok=True)
         result.images[0].save(output)
+        logger.info("flux generate done | output=%s | took=%.2fs", output, time.perf_counter() - started)
         return str(output)
