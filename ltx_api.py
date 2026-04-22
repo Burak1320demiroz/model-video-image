@@ -1,6 +1,5 @@
 import gc
 import logging
-import os
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
@@ -60,6 +59,36 @@ class LtxVideoGenerator:
         except Exception:
             logger.warning("ltx cpu offload unavailable, moving model to cuda directly")
             pipe.to(DEVICE)
+
+    @staticmethod
+    def _normalize_frame(frame: np.ndarray) -> np.ndarray:
+        arr = np.asarray(frame)
+
+        # Accept torch-like BCHW/CHW/HWC frame layouts and convert to HWC.
+        if arr.ndim == 4:
+            arr = arr[0]
+        if arr.ndim == 3 and arr.shape[0] in (1, 2, 3, 4) and arr.shape[-1] not in (1, 2, 3, 4):
+            arr = np.transpose(arr, (1, 2, 0))
+        if arr.ndim == 2:
+            arr = np.expand_dims(arr, axis=-1)
+
+        if arr.ndim != 3:
+            raise ValueError(f"unsupported frame shape: {arr.shape}")
+
+        # Convert float outputs [0,1] to uint8.
+        if np.issubdtype(arr.dtype, np.floating):
+            max_val = float(np.nanmax(arr)) if arr.size else 0.0
+            if max_val <= 1.0:
+                arr = arr * 255.0
+            arr = np.clip(arr, 0.0, 255.0)
+            arr = arr.astype(np.uint8)
+        else:
+            arr = np.clip(arr, 0, 255).astype(np.uint8)
+
+        # Ensure channel count is imageio compatible.
+        if arr.shape[-1] not in (1, 2, 3, 4):
+            raise ValueError(f"invalid channel count: {arr.shape[-1]} for frame shape {arr.shape}")
+        return arr
 
     def _load_ltx2_pipe(self, model_id: str) -> "LTX2ImageToVideoPipeline":
         from diffusers import LTX2ImageToVideoPipeline
@@ -209,9 +238,15 @@ class LtxVideoGenerator:
         writer = imageio.get_writer(str(output), fps=fps, codec="libx264")
         try:
             for i, frame in enumerate(frames_np):
-                writer.append_data(np.asarray(frame).astype(np.uint8))
+                normalized = self._normalize_frame(frame)
+                writer.append_data(normalized)
                 if i == 0 or (i + 1) % 12 == 0 or i == len(frames_np) - 1:
-                    logger.info("ltx frame progress | frame=%d/%d", i + 1, len(frames_np))
+                    logger.info(
+                        "ltx frame progress | frame=%d/%d shape=%s",
+                        i + 1,
+                        len(frames_np),
+                        normalized.shape,
+                    )
         finally:
             writer.close()
 

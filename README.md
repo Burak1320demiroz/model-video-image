@@ -9,7 +9,7 @@ Bu proje, tek Docker container icinde iki endpoint ile calisir:
 > Not: Gercek kullanim hedefi RunPod RTX 4090'dur.
 
 ## 1) Deploy Ozeti (RunPod)
-
+<!--  -->
 1. Image olustur:
    - `docker build -t seninrepo/ai-server:latest .`
 2. Docker Hub'a push et:
