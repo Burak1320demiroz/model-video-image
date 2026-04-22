@@ -169,8 +169,8 @@ class LtxVideoGenerator:
         prompt: str,
         output_path: str = "output/video.mp4",
         fps: int = 20,
-        frames: int = 65,
-        num_inference_steps: int = 20,
+        frames: int = 81,
+        num_inference_steps: int = 28,
         guidance_scale: float = 2.2,
     ) -> str:
         """
