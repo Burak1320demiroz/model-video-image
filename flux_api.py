@@ -1,9 +1,11 @@
 import gc
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 import torch
-from diffusers import DiffusionPipeline
+
+if TYPE_CHECKING:
+    from diffusers import DiffusionPipeline
 
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -20,10 +22,12 @@ class FluxImageGenerator:
 
     def __init__(self, model_id: str = "black-forest-labs/FLUX.1-schnell") -> None:
         self.model_id = model_id
-        self._pipe: Optional[DiffusionPipeline] = None
+        self._pipe: Optional["DiffusionPipeline"] = None
 
-    def _load(self) -> DiffusionPipeline:
+    def _load(self) -> "DiffusionPipeline":
         if self._pipe is None:
+            from diffusers import DiffusionPipeline
+
             pipe = DiffusionPipeline.from_pretrained(
                 self.model_id,
                 torch_dtype=DTYPE,

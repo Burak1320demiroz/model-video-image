@@ -166,3 +166,30 @@ Ornek:
   3. `generate-video`
 - Bu siralama VRAM baskisini azaltir.
 - Ilk istek, model yukleme nedeniyle daha yavas olabilir.
+
+## 7) RunPod Temiz Kurulum (Onerilen)
+
+Asagidaki adimlar, CUDA/PyTorch uyumsuzlugu yasamadan temiz kurulum icindir.
+
+1. Projeye gir:
+   - `cd /workspace/model-video-image`
+2. RunPod'un GPU uyumlu PyTorch surumlerini dogrudan kur:
+   - `pip install torch==2.4.1+cu124 torchvision==0.19.1+cu124 torchaudio==2.4.1+cu124 --index-url https://download.pytorch.org/whl/cu124`
+3. Proje bagimliliklarini kur:
+   - `pip install -r requirements.txt`
+4. API'yi baslat:
+   - `uvicorn main:app --host 0.0.0.0 --port 8000`
+
+Kontroller:
+
+- GPU gorunuyor mu:
+  - `nvidia-smi`
+- PyTorch CUDA goruyor mu:
+  - `python -c "import torch; print(torch.__version__, torch.cuda.is_available(), torch.version.cuda)"`
+- API dokumani:
+  - `https://<pod-url>/docs`
+
+Notlar:
+
+- Bu repoda `torch` artik `requirements.txt` icinde tutulmuyor; RunPod taban imaji ile uyumlu surumu manuel kurmaniz gerekir.
+- Ana sayfa (`/`) tanimli degildir, bu nedenle `/` icin `404` normaldir.
