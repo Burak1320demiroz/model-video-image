@@ -169,6 +169,7 @@ Ornek:
 - Video modeli secimi:
   - Varsayilan: `Lightricks/LTX-2.3-nvfp4` (dusuk VRAM oncelikli, ilk deneme)
   - Fallback: `Lightricks/LTX-Video` (LTX-2.3 pipeline uyumsuzsa otomatik devreye girer)
+  - LTX-2.3 icin `diffusers==0.37.1` gerekir.
 
 ## 7) RunPod Temiz Kurulum (Onerilen)
 
@@ -177,7 +178,7 @@ Asagidaki adimlar, CUDA/PyTorch uyumsuzlugu yasamadan temiz kurulum icindir.
 1. Projeye gir:
    - `cd /workspace/model-video-image`
 2. RunPod'un GPU uyumlu PyTorch surumlerini dogrudan kur:
-   - `pip install torch==2.4.1+cu124 torchvision==0.19.1+cu124 torchaudio==2.4.1+cu124 --index-url https://download.pytorch.org/whl/cu124`
+   - `pip install torch==2.5.1+cu124 torchvision==0.20.1+cu124 torchaudio==2.5.1+cu124 --index-url https://download.pytorch.org/whl/cu124`
 3. Proje bagimliliklarini kur:
    - `pip install -r requirements.txt`
 4. API'yi baslat:

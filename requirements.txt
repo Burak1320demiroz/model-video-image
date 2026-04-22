@@ -1,6 +1,6 @@
 fastapi
 uvicorn[standard]
-diffusers==0.36.0
+diffusers==0.37.1
 transformers==4.46.3
 accelerate
 opencv-python-headless

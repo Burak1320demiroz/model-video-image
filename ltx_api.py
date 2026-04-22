@@ -91,7 +91,11 @@ class LtxVideoGenerator:
         return arr
 
     def _load_ltx2_pipe(self, model_id: str) -> "LTX2ImageToVideoPipeline":
-        from diffusers import LTX2ImageToVideoPipeline
+        # LTX2 pipeline location differs across diffusers versions.
+        try:
+            from diffusers import LTX2ImageToVideoPipeline
+        except ImportError:
+            from diffusers.pipelines.ltx2 import LTX2ImageToVideoPipeline
 
         logger.info("loading ltx2 image-to-video | model_id=%s | device=%s", model_id, DEVICE)
         pipe = LTX2ImageToVideoPipeline.from_pretrained(model_id, torch_dtype=torch.bfloat16)
@@ -199,9 +203,10 @@ class LtxVideoGenerator:
             generator = torch.Generator(device=DEVICE).manual_seed(int(time.time()) % 1_000_000)
 
         try:
+            safe_prompt = prompt[:600]
             result = pipe(
                 image=base,
-                prompt=prompt,
+                prompt=safe_prompt,
                 width=width,
                 height=height,
                 num_frames=num_frames,
@@ -210,12 +215,13 @@ class LtxVideoGenerator:
                 guidance_scale=guidance_scale,
                 generator=generator,
                 output_type="np",
+                decode_chunk_size=8,
             )
         except TypeError:
             # Backward compatibility for older signatures without frame_rate.
             result = pipe(
                 image=base,
-                prompt=prompt,
+                prompt=safe_prompt,
                 width=width,
                 height=height,
                 num_frames=num_frames,
@@ -223,6 +229,7 @@ class LtxVideoGenerator:
                 guidance_scale=guidance_scale,
                 generator=generator,
                 output_type="np",
+                decode_chunk_size=8,
             )
 
         frames_np = None
