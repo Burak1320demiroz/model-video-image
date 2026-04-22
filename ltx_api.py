@@ -215,7 +215,6 @@ class LtxVideoGenerator:
                 guidance_scale=guidance_scale,
                 generator=generator,
                 output_type="np",
-                decode_chunk_size=8,
             )
         except TypeError:
             # Backward compatibility for older signatures without frame_rate.
@@ -229,7 +228,6 @@ class LtxVideoGenerator:
                 guidance_scale=guidance_scale,
                 generator=generator,
                 output_type="np",
-                decode_chunk_size=8,
             )
 
         frames_np = None
