@@ -166,6 +166,9 @@ Ornek:
   3. `generate-video`
 - Bu siralama VRAM baskisini azaltir.
 - Ilk istek, model yukleme nedeniyle daha yavas olabilir.
+- Video modeli secimi:
+  - Varsayilan: `Lightricks/LTX-2.3-nvfp4` (dusuk VRAM oncelikli, ilk deneme)
+  - Fallback: `Lightricks/LTX-Video` (LTX-2.3 pipeline uyumsuzsa otomatik devreye girer)
 
 ## 7) RunPod Temiz Kurulum (Onerilen)
 

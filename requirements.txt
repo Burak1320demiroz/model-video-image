@@ -3,7 +3,11 @@ uvicorn[standard]
 diffusers==0.36.0
 transformers==4.46.3
 accelerate
-opencv-python
+opencv-python-headless
 imageio
+imageio-ffmpeg
 safetensors
 Pillow
+numpy
+sentencepiece
+protobuf

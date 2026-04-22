@@ -1,13 +1,17 @@
 import gc
 import logging
+import os
 import time
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 import imageio.v2 as imageio
 import numpy as np
 import torch
 from PIL import Image
+
+if TYPE_CHECKING:
+    from diffusers import LTX2ImageToVideoPipeline, LTXImageToVideoPipeline
 
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -18,25 +22,99 @@ logger = logging.getLogger("ltx")
 
 class LtxVideoGenerator:
     """
-    Placeholder LTX-style video generator.
-    Keeps a lazy-load interface so you can replace internals with a real LTX model.
+    LTX image-to-video generator.
+    Tries low-VRAM LTX-2.3 nvfp4 first, then falls back to LTX-Video.
     """
 
-    def __init__(self, model_id: str = "Lightricks/LTX-Video") -> None:
+    def __init__(
+        self,
+        model_id: str = "Lightricks/LTX-2.3-nvfp4",
+        fallback_model_id: str = "Lightricks/LTX-Video",
+    ) -> None:
         self.model_id = model_id
-        self._loaded = False
+        self.fallback_model_id = fallback_model_id
+        self._pipe: Optional["LTX2ImageToVideoPipeline | LTXImageToVideoPipeline"] = None
+        self._active_model_id: Optional[str] = None
+        self._using_ltx2 = False
 
-    def _load(self) -> None:
-        if not self._loaded:
-            # Real model load can be inserted here.
-            logger.info("loading ltx placeholder | model_id=%s | device=%s", self.model_id, DEVICE)
-            self._loaded = True
-        else:
-            logger.info("reusing cached ltx placeholder")
+    @staticmethod
+    def _snap_to_32(value: int) -> int:
+        return max(32, (value // 32) * 32)
+
+    @staticmethod
+    def _snap_frames(value: int) -> int:
+        # LTX family works best with 8n+1 frame counts.
+        if value < 9:
+            return 9
+        remainder = (value - 1) % 8
+        return value if remainder == 0 else value + (8 - remainder)
+
+    def _configure_pipe_memory(self, pipe: "LTX2ImageToVideoPipeline | LTXImageToVideoPipeline") -> None:
+        if DEVICE != "cuda":
+            pipe.to(DEVICE)
+            return
+
+        try:
+            pipe.enable_model_cpu_offload()
+            logger.info("ltx cpu offload enabled for lower vram")
+        except Exception:
+            logger.warning("ltx cpu offload unavailable, moving model to cuda directly")
+            pipe.to(DEVICE)
+
+    def _load_ltx2_pipe(self, model_id: str) -> "LTX2ImageToVideoPipeline":
+        from diffusers import LTX2ImageToVideoPipeline
+
+        logger.info("loading ltx2 image-to-video | model_id=%s | device=%s", model_id, DEVICE)
+        pipe = LTX2ImageToVideoPipeline.from_pretrained(model_id, torch_dtype=torch.bfloat16)
+        self._configure_pipe_memory(pipe)
+        self._using_ltx2 = True
+        return pipe
+
+    def _load_ltx_pipe(self, model_id: str) -> "LTXImageToVideoPipeline":
+        from diffusers import LTXImageToVideoPipeline
+
+        logger.info("loading ltx image-to-video | model_id=%s | device=%s", model_id, DEVICE)
+        pipe = LTXImageToVideoPipeline.from_pretrained(model_id, torch_dtype=torch.bfloat16)
+        self._configure_pipe_memory(pipe)
+        self._using_ltx2 = False
+        return pipe
+
+    def _load(self) -> "LTX2ImageToVideoPipeline | LTXImageToVideoPipeline":
+        if self._pipe is not None:
+            logger.info("reusing cached ltx model | model_id=%s", self._active_model_id)
+            return self._pipe
+
+        started = time.perf_counter()
+        load_errors = []
+        for idx, candidate in enumerate((self.model_id, self.fallback_model_id)):
+            try:
+                # Prefer LTX2 pipeline for LTX-2/2.3 model IDs.
+                if "LTX-2" in candidate or "ltx-2" in candidate:
+                    pipe = self._load_ltx2_pipe(candidate)
+                else:
+                    pipe = self._load_ltx_pipe(candidate)
+                self._pipe = pipe
+                self._active_model_id = candidate
+                logger.info(
+                    "ltx model loaded | active_model=%s | ltx2=%s | took=%.2fs",
+                    candidate,
+                    self._using_ltx2,
+                    time.perf_counter() - started,
+                )
+                return pipe
+            except Exception as exc:
+                load_errors.append(f"{candidate}: {exc}")
+                logger.exception("ltx model load failed | candidate=%s", candidate)
+                if idx == 0:
+                    logger.warning("trying fallback ltx model")
+
+        raise RuntimeError(f"all ltx model load attempts failed: {' | '.join(load_errors)}")
 
     def unload(self) -> None:
-        logger.info("unloading ltx placeholder")
-        self._loaded = False
+        logger.info("unloading ltx model | active_model=%s", self._active_model_id)
+        self._pipe = None
+        self._active_model_id = None
+        self._using_ltx2 = False
         gc.collect()
         if DEVICE == "cuda":
             torch.cuda.empty_cache()
@@ -47,42 +125,93 @@ class LtxVideoGenerator:
         prompt: str,
         output_path: str = "output/video.mp4",
         fps: int = 12,
-        frames: int = 48,
+        frames: int = 49,
+        num_inference_steps: int = 8,
+        guidance_scale: float = 1.0,
     ) -> str:
         """
-        Creates a simple animated video from a source image.
-        This is a production-safe fallback until real LTX weights are wired.
+        Generate video from a source image with LTX.
         """
         logger.info(
-            "ltx generate start | image=%s fps=%d frames=%d prompt_len=%d",
+            "ltx generate start | image=%s fps=%d frames=%d steps=%d guidance=%.2f prompt_len=%d",
             image_path,
             fps,
             frames,
+            num_inference_steps,
+            guidance_scale,
             len(prompt),
         )
         started = time.perf_counter()
-        self._load()
+        pipe = self._load()
 
         base = Image.open(image_path).convert("RGB")
-        arr = np.asarray(base, dtype=np.float32)
-        h, w, _ = arr.shape
+        raw_w, raw_h = base.size
+        width = self._snap_to_32(raw_w)
+        height = self._snap_to_32(raw_h)
+        num_frames = self._snap_frames(frames)
+        if (width, height) != (raw_w, raw_h):
+            base = base.resize((width, height), Image.BICUBIC)
+        logger.info(
+            "ltx normalized params | size=%dx%d->%dx%d frames=%d->%d model=%s",
+            raw_w,
+            raw_h,
+            width,
+            height,
+            frames,
+            num_frames,
+            self._active_model_id,
+        )
 
         output = Path(output_path)
         output.parent.mkdir(parents=True, exist_ok=True)
 
+        generator = None
+        if DEVICE == "cuda":
+            generator = torch.Generator(device=DEVICE).manual_seed(int(time.time()) % 1_000_000)
+
+        try:
+            result = pipe(
+                image=base,
+                prompt=prompt,
+                width=width,
+                height=height,
+                num_frames=num_frames,
+                frame_rate=float(fps),
+                num_inference_steps=num_inference_steps,
+                guidance_scale=guidance_scale,
+                generator=generator,
+                output_type="np",
+            )
+        except TypeError:
+            # Backward compatibility for older signatures without frame_rate.
+            result = pipe(
+                image=base,
+                prompt=prompt,
+                width=width,
+                height=height,
+                num_frames=num_frames,
+                num_inference_steps=num_inference_steps,
+                guidance_scale=guidance_scale,
+                generator=generator,
+                output_type="np",
+            )
+
+        frames_np = None
+        if hasattr(result, "frames"):
+            frames_np = result.frames[0] if isinstance(result.frames, list) else result.frames
+        elif isinstance(result, tuple) and len(result) > 0:
+            frames_np = result[0][0] if isinstance(result[0], list) else result[0]
+
+        if frames_np is None:
+            raise RuntimeError("ltx pipeline returned no frames")
+
+        logger.info("ltx writing video | frames=%d fps=%d", len(frames_np), fps)
         writer = imageio.get_writer(str(output), fps=fps, codec="libx264")
         try:
-            for i in range(frames):
-                t = i / max(frames - 1, 1)
-                zoom = 1.0 + (0.05 * t)
-                nh, nw = int(h / zoom), int(w / zoom)
-                y0 = (h - nh) // 2
-                x0 = (w - nw) // 2
-                crop = arr[y0 : y0 + nh, x0 : x0 + nw]
-                frame = Image.fromarray(crop.astype(np.uint8)).resize((w, h), Image.BICUBIC)
-                writer.append_data(np.asarray(frame))
-                if i == 0 or (i + 1) % 12 == 0 or i == frames - 1:
-                    logger.info("ltx frame progress | frame=%d/%d", i + 1, frames)
+            for i, frame in enumerate(frames_np):
+                writer.append_data(np.asarray(frame).astype(np.uint8))
+                if i == 0 or (i + 1) % 12 == 0 or i == len(frames_np) - 1:
+                    logger.info("ltx frame progress | frame=%d/%d", i + 1, len(frames_np))
         finally:
             writer.close()
 
