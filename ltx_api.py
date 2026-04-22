@@ -27,8 +27,8 @@ class LtxVideoGenerator:
 
     def __init__(
         self,
-        model_id: str = "Lightricks/LTX-2.3-nvfp4",
-        fallback_model_id: str = "Lightricks/LTX-Video",
+        model_id: str = "Lightricks/LTX-Video",
+        fallback_model_id: Optional[str] = None,
     ) -> None:
         self.model_id = model_id
         self.fallback_model_id = fallback_model_id
@@ -47,6 +47,13 @@ class LtxVideoGenerator:
             return 9
         remainder = (value - 1) % 8
         return value if remainder == 0 else value + (8 - remainder)
+
+    @staticmethod
+    def _compress_prompt(prompt: str, max_words: int = 100) -> str:
+        words = prompt.split()
+        if len(words) <= max_words:
+            return prompt
+        return " ".join(words[:max_words])
 
     def _configure_pipe_memory(self, pipe: "LTX2ImageToVideoPipeline | LTXImageToVideoPipeline") -> None:
         if DEVICE != "cuda":
@@ -119,7 +126,11 @@ class LtxVideoGenerator:
 
         started = time.perf_counter()
         load_errors = []
-        for idx, candidate in enumerate((self.model_id, self.fallback_model_id)):
+        candidates = [self.model_id]
+        if self.fallback_model_id and self.fallback_model_id != self.model_id:
+            candidates.append(self.fallback_model_id)
+
+        for idx, candidate in enumerate(candidates):
             try:
                 # Prefer LTX2 pipeline for LTX-2/2.3 model IDs.
                 if "LTX-2" in candidate or "ltx-2" in candidate:
@@ -138,7 +149,7 @@ class LtxVideoGenerator:
             except Exception as exc:
                 load_errors.append(f"{candidate}: {exc}")
                 logger.exception("ltx model load failed | candidate=%s", candidate)
-                if idx == 0:
+                if idx == 0 and len(candidates) > 1:
                     logger.warning("trying fallback ltx model")
 
         raise RuntimeError(f"all ltx model load attempts failed: {' | '.join(load_errors)}")
@@ -157,9 +168,9 @@ class LtxVideoGenerator:
         image_path: str,
         prompt: str,
         output_path: str = "output/video.mp4",
-        fps: int = 12,
+        fps: int = 16,
         frames: int = 49,
-        num_inference_steps: int = 8,
+        num_inference_steps: int = 12,
         guidance_scale: float = 1.0,
     ) -> str:
         """
@@ -202,8 +213,11 @@ class LtxVideoGenerator:
         if DEVICE == "cuda":
             generator = torch.Generator(device=DEVICE).manual_seed(int(time.time()) % 1_000_000)
 
+        safe_prompt = self._compress_prompt(prompt, max_words=100)
+        if safe_prompt != prompt:
+            logger.info("ltx prompt truncated | original_words=%d kept_words=%d", len(prompt.split()), len(safe_prompt.split()))
+
         try:
-            safe_prompt = prompt[:600]
             result = pipe(
                 image=base,
                 prompt=safe_prompt,
@@ -238,6 +252,12 @@ class LtxVideoGenerator:
 
         if frames_np is None:
             raise RuntimeError("ltx pipeline returned no frames")
+
+        # Some pipelines return (batch, frames, H, W, C) and some return (frames, H, W, C).
+        if isinstance(frames_np, np.ndarray) and frames_np.ndim == 5:
+            frames_np = frames_np[0]
+        elif isinstance(frames_np, list) and len(frames_np) == 1 and isinstance(frames_np[0], np.ndarray) and frames_np[0].ndim == 4:
+            frames_np = frames_np[0]
 
         logger.info("ltx writing video | frames=%d fps=%d", len(frames_np), fps)
         writer = imageio.get_writer(str(output), fps=fps, codec="libx264")
