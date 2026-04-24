@@ -185,6 +185,10 @@ Asagidaki adimlar, CUDA/PyTorch uyumsuzlugu yasamadan temiz kurulum icindir.
    - `./scripts/runpod_bootstrap.sh`
 5. API'yi baslat:
    - `./scripts/runpod_start.sh`
+6. Eger `401 gated repo` hatasi alirsan:
+   - `hf auth login` (token tekrar gir)
+   - Sonra tekrar `./scripts/runpod_start.sh`
+   - Not: start scripti token'i otomatik olarak `/root/.cache/huggingface/token` konumundan aktif `HF_HOME` klasorune kopyalar.
 
 Kontroller:
 
