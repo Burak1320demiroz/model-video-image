@@ -1,1 +1,3 @@
 a.md
+__pycache__/
+*.pyc

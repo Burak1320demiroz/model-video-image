@@ -181,12 +181,10 @@ Asagidaki adimlar, CUDA/PyTorch uyumsuzlugu yasamadan temiz kurulum icindir.
    - `pip install torch==2.5.1+cu124 torchvision==0.20.1+cu124 torchaudio==2.5.1+cu124 --index-url https://download.pytorch.org/whl/cu124`
 3. Proje bagimliliklarini kur:
    - `pip install -r requirements.txt`
-4. Hugging Face cache'i `/workspace` altina al (disk dolmasini onler):
-   - `mkdir -p /workspace/hf-cache/{hub,transformers}`
-   - Not: API bu degiskenleri artik varsayilan olarak otomatik ayarlar (`main.py`).
-   - Isterseniz override etmek icin manuel `export` kullanabilirsiniz.
+4. Tek komutla ortam kur (opsiyonel script):
+   - `./scripts/runpod_bootstrap.sh`
 5. API'yi baslat:
-   - `HF_HOME=/workspace/hf-cache HUGGINGFACE_HUB_CACHE=/workspace/hf-cache/hub HF_HUB_DISABLE_XET=1 uvicorn main:app --host 0.0.0.0 --port 8000`
+   - `./scripts/runpod_start.sh`
 
 Kontroller:
 
@@ -202,3 +200,4 @@ Notlar:
 - Bu repoda `torch` artik `requirements.txt` icinde tutulmuyor; RunPod taban imaji ile uyumlu surumu manuel kurmaniz gerekir.
 - Ana sayfa (`/`) tanimli degildir, bu nedenle `/` icin `404` normaldir.
 - `black-forest-labs/FLUX.2-dev` gated modeldir; Hugging Face hesabinizda model erisimi ve token login'i gerekli.
+- Baslatma scripti (`scripts/runpod_start.sh`) varsayilan olarak cache'i `/workspace/hf-cache` altina alir ve `HF_HUB_DISABLE_XET=1` kullanir.
