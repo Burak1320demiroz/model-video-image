@@ -27,8 +27,8 @@ class LtxVideoGenerator:
 
     def __init__(
         self,
-        model_id: str = "Lightricks/LTX-Video",
-        fallback_model_id: Optional[str] = None,
+        model_id: str = "Lightricks/LTX-2.3-fp8",
+        fallback_model_id: Optional[str] = "Lightricks/LTX-Video",
     ) -> None:
         self.model_id = model_id
         self.fallback_model_id = fallback_model_id
@@ -54,6 +54,11 @@ class LtxVideoGenerator:
         if len(words) <= max_words:
             return prompt
         return " ".join(words[:max_words])
+
+    @staticmethod
+    def _upscale_target_size(raw_w: int, raw_h: int, min_w: int = 1920, min_h: int = 1088) -> tuple[int, int]:
+        scale = max(min_w / max(raw_w, 1), min_h / max(raw_h, 1), 1.0)
+        return int(raw_w * scale), int(raw_h * scale)
 
     def _configure_pipe_memory(self, pipe: "LTX2ImageToVideoPipeline | LTXImageToVideoPipeline") -> None:
         if DEVICE != "cuda":
@@ -168,7 +173,7 @@ class LtxVideoGenerator:
         image_path: str,
         prompt: str,
         output_path: str = "output/video.mp4",
-        fps: int = 20,
+        fps: int = 30,
         frames: int = 81,
         num_inference_steps: int = 28,
         guidance_scale: float = 2.2,
@@ -176,6 +181,7 @@ class LtxVideoGenerator:
         """
         Generate video from a source image with LTX.
         """
+        fps = 30
         logger.info(
             "ltx generate start | image=%s fps=%d frames=%d steps=%d guidance=%.2f prompt_len=%d",
             image_path,
@@ -190,8 +196,9 @@ class LtxVideoGenerator:
 
         base = Image.open(image_path).convert("RGB")
         raw_w, raw_h = base.size
-        width = self._snap_to_32(raw_w)
-        height = self._snap_to_32(raw_h)
+        target_w, target_h = self._upscale_target_size(raw_w, raw_h)
+        width = self._snap_to_32(target_w)
+        height = self._snap_to_32(target_h)
         num_frames = self._snap_frames(frames)
         if (width, height) != (raw_w, raw_h):
             base = base.resize((width, height), Image.BICUBIC)
