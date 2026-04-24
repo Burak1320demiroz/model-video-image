@@ -84,8 +84,8 @@ class FluxImageGenerator:
         output_path: str = "output/image.png",
         num_inference_steps: int = 4,
         guidance_scale: float = 0.0,
-        height: int = 768,
-        width: int = 768,
+        height: int = 576,
+        width: int = 1024,
         seed: Optional[int] = None,
     ) -> str:
         logger.info(
