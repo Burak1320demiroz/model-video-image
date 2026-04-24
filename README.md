@@ -183,9 +183,8 @@ Asagidaki adimlar, CUDA/PyTorch uyumsuzlugu yasamadan temiz kurulum icindir.
    - `pip install -r requirements.txt`
 4. Hugging Face cache'i `/workspace` altina al (disk dolmasini onler):
    - `mkdir -p /workspace/hf-cache/{hub,transformers}`
-   - `export HF_HOME=/workspace/hf-cache`
-   - `export HUGGINGFACE_HUB_CACHE=/workspace/hf-cache/hub`
-   - `export HF_HUB_DISABLE_XET=1`
+   - Not: API bu degiskenleri artik varsayilan olarak otomatik ayarlar (`main.py`).
+   - Isterseniz override etmek icin manuel `export` kullanabilirsiniz.
 5. API'yi baslat:
    - `HF_HOME=/workspace/hf-cache HUGGINGFACE_HUB_CACHE=/workspace/hf-cache/hub HF_HUB_DISABLE_XET=1 uvicorn main:app --host 0.0.0.0 --port 8000`
 

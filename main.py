@@ -1,5 +1,6 @@
 import gc
 import logging
+import os
 import re
 import time
 import uuid
@@ -15,6 +16,12 @@ from pydantic import BaseModel, Field
 
 from flux_api import FluxImageGenerator
 from ltx_api import LtxVideoGenerator
+
+# Default Hugging Face cache settings for RunPod.
+# Uses /workspace to avoid filling the container overlay disk.
+os.environ.setdefault("HF_HOME", "/workspace/hf-cache")
+os.environ.setdefault("HUGGINGFACE_HUB_CACHE", "/workspace/hf-cache/hub")
+os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
 
 
 logging.basicConfig(
