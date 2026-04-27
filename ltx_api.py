@@ -56,7 +56,7 @@ class LtxVideoGenerator:
         return " ".join(words[:max_words])
 
     @staticmethod
-    def _upscale_target_size(raw_w: int, raw_h: int, min_w: int = 1920, min_h: int = 1088) -> tuple[int, int]:
+    def _upscale_target_size(raw_w: int, raw_h: int, min_w: int = 1280, min_h: int = 704) -> tuple[int, int]:
         scale = max(min_w / max(raw_w, 1), min_h / max(raw_h, 1), 1.0)
         return int(raw_w * scale), int(raw_h * scale)
 
@@ -175,8 +175,8 @@ class LtxVideoGenerator:
         output_path: str = "output/video.mp4",
         fps: int = 30,
         frames: int = 81,
-        num_inference_steps: int = 28,
-        guidance_scale: float = 2.2,
+        num_inference_steps: int = 40,
+        guidance_scale: float = 3.5,
     ) -> str:
         """
         Generate video from a source image with LTX.
