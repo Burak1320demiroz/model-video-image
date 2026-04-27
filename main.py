@@ -54,12 +54,14 @@ class ImageReq(BaseModel):
     prompt: str = Field(..., min_length=1)
     seed: Optional[int] = None
     project_name: str = Field("default")
+    scene_id: Optional[str] = None
 
 
 class VideoReq(BaseModel):
     image: str = Field(..., min_length=1, description="Path like output/image.png")
     prompt: str = Field(..., min_length=1)
     project_name: str = Field("default")
+    scene_id: Optional[str] = None
 
 def get_safe_project_dir(base_dir: Path, proj_name: str) -> Path:
     safe_name = re.sub(r'[^a-zA-Z0-9_\-]', '_', proj_name)
@@ -136,7 +138,7 @@ def generate_image(req: ImageReq, request: Request) -> dict:
             
             p_dir = get_safe_project_dir(output_dir, req.project_name)
             safe_name = p_dir.name
-            file_name = f"img_{uuid.uuid4().hex[:8]}.png"
+            file_name = f"img_{req.scene_id}.png" if req.scene_id else f"img_{uuid.uuid4().hex[:8]}.png"
             
             image_path = flux.generate(
                 prompt=req.prompt,
@@ -193,7 +195,7 @@ def generate_video(req: VideoReq, request: Request) -> dict:
             
             p_dir = get_safe_project_dir(output_dir, req.project_name)
             safe_name = p_dir.name
-            file_name = f"vid_{uuid.uuid4().hex[:8]}.mp4"
+            file_name = f"vid_{req.scene_id}.mp4" if req.scene_id else f"vid_{uuid.uuid4().hex[:8]}.mp4"
             
             video_path = ltx.generate(
                 image_path=str(image_path),
