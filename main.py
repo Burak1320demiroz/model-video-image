@@ -255,6 +255,25 @@ def download_file(
     )
 
 
+@app.get("/list-files")
+def list_files(project_name: str, request: Request) -> dict:
+    safe_proj = safe_project_name(project_name)
+    proj_dir = (output_dir / safe_proj).resolve()
+    
+    files_dict = {}
+    if proj_dir.exists() and proj_dir.is_dir():
+        for f in proj_dir.iterdir():
+            if f.is_file():
+                rel_path = f"output/{safe_proj}/{f.name}"
+                download_path = f"download/{safe_proj}/{f.name}"
+                files_dict[f.name] = {
+                    "rel_path": rel_path,
+                    "download_url": build_public_url(request, download_path)
+                }
+                
+    return {"project_name": project_name, "files": files_dict}
+
+
 if __name__ == "__main__":
     import uvicorn
 
