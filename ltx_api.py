@@ -1,8 +1,9 @@
 import gc
+import inspect
 import logging
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 import imageio.v2 as imageio
 import numpy as np
@@ -17,6 +18,26 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 OUTPUT_DIR = Path("output")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 logger = logging.getLogger("ltx")
+
+# Conservative defaults aligned with upstream LTX / LTX-2 pipelines (Lightricks docs + diffusers).
+DEFAULT_VIDEO_FPS = 24.0
+DEFAULT_VIDEO_FRAMES = 121
+DEFAULT_INFERENCE_STEPS = 40
+DEFAULT_GUIDANCE_SCALE = 4.0
+DEFAULT_NEGATIVE_PROMPT = (
+    "worst quality, low resolution, blurry, jittery, distorted motion, flickering, "
+    "warped anatomy, unnatural movement, watermark, logo, subtitles, text artifacts"
+)
+
+
+def _filter_pipeline_kwargs(pipe: Any, kw: dict) -> dict:
+    """Forward only kwargs supported by this diffusers pipe (LTX vs LTX-2 differ)."""
+    try:
+        sig = inspect.signature(pipe.__call__)
+        params = sig.parameters.keys()
+        return {k: v for k, v in kw.items() if k in params}
+    except (TypeError, ValueError):
+        return kw
 
 
 class LtxVideoGenerator:
@@ -49,7 +70,7 @@ class LtxVideoGenerator:
         return value if remainder == 0 else value + (8 - remainder)
 
     @staticmethod
-    def _compress_prompt(prompt: str, max_words: int = 100) -> str:
+    def _compress_prompt(prompt: str, max_words: int = 150) -> str:
         words = prompt.split()
         if len(words) <= max_words:
             return prompt
@@ -173,22 +194,35 @@ class LtxVideoGenerator:
         image_path: str,
         prompt: str,
         output_path: str = "output/video.mp4",
-        fps: int = 30,
-        frames: int = 81,
-        num_inference_steps: int = 40,
-        guidance_scale: float = 3.5,
+        fps: Optional[float] = None,
+        frames: Optional[int] = None,
+        num_inference_steps: Optional[int] = None,
+        guidance_scale: Optional[float] = None,
+        negative_prompt: Optional[str] = None,
+        seed: Optional[int] = None,
     ) -> str:
         """
         Generate video from a source image with LTX.
         """
-        fps = 30
+        eff_fps = DEFAULT_VIDEO_FPS if fps is None else float(fps)
+        eff_fps = max(8.0, min(60.0, eff_fps))
+        eff_frames = DEFAULT_VIDEO_FRAMES if frames is None else int(frames)
+        eff_frames = max(9, eff_frames)
+        eff_steps = DEFAULT_INFERENCE_STEPS if num_inference_steps is None else int(num_inference_steps)
+        eff_steps = max(15, min(120, eff_steps))
+        eff_guidance = DEFAULT_GUIDANCE_SCALE if guidance_scale is None else float(guidance_scale)
+        eff_guidance = max(1.001, min(30.0, eff_guidance))
+        neg_used = DEFAULT_NEGATIVE_PROMPT if negative_prompt is None else negative_prompt
+
         logger.info(
-            "ltx generate start | image=%s fps=%d frames=%d steps=%d guidance=%.2f prompt_len=%d",
+            "ltx generate start | image=%s fps=%.3f frames=%d steps=%d guidance=%.2f seed=%s neg_len=%d prompt_len=%d",
             image_path,
-            fps,
-            frames,
-            num_inference_steps,
-            guidance_scale,
+            eff_fps,
+            eff_frames,
+            eff_steps,
+            eff_guidance,
+            str(seed),
+            len(neg_used) if neg_used else 0,
             len(prompt),
         )
         started = time.perf_counter()
@@ -199,7 +233,8 @@ class LtxVideoGenerator:
         target_w, target_h = self._upscale_target_size(raw_w, raw_h)
         width = self._snap_to_32(target_w)
         height = self._snap_to_32(target_h)
-        num_frames = self._snap_frames(frames)
+        eff_frames_capped = min(eff_frames, 337)
+        num_frames = self._snap_frames(eff_frames_capped)
         if (width, height) != (raw_w, raw_h):
             base = base.resize((width, height), Image.BICUBIC)
         logger.info(
@@ -208,7 +243,7 @@ class LtxVideoGenerator:
             raw_h,
             width,
             height,
-            frames,
+            eff_frames,
             num_frames,
             self._active_model_id,
         )
@@ -218,38 +253,56 @@ class LtxVideoGenerator:
 
         generator = None
         if DEVICE == "cuda":
-            generator = torch.Generator(device=DEVICE).manual_seed(int(time.time()) % 1_000_000)
+            if seed is not None:
+                generator = torch.Generator(device=DEVICE).manual_seed(int(seed) & 0x7FFFFFFF)
+            else:
+                generator = torch.Generator(device=DEVICE).manual_seed(int(time.time()) % 1_000_000)
+        elif DEVICE == "cpu" and seed is not None:
+            generator = torch.Generator().manual_seed(int(seed) & 0x7FFFFFFF)
 
-        safe_prompt = self._compress_prompt(prompt, max_words=100)
+        safe_prompt = self._compress_prompt(prompt, max_words=150)
         if safe_prompt != prompt:
             logger.info("ltx prompt truncated | original_words=%d kept_words=%d", len(prompt.split()), len(safe_prompt.split()))
 
-        try:
-            result = pipe(
-                image=base,
-                prompt=safe_prompt,
-                width=width,
-                height=height,
-                num_frames=num_frames,
-                frame_rate=float(fps),
-                num_inference_steps=num_inference_steps,
-                guidance_scale=guidance_scale,
-                generator=generator,
-                output_type="np",
-            )
-        except TypeError:
-            # Backward compatibility for older signatures without frame_rate.
-            result = pipe(
-                image=base,
-                prompt=safe_prompt,
-                width=width,
-                height=height,
-                num_frames=num_frames,
-                num_inference_steps=num_inference_steps,
-                guidance_scale=guidance_scale,
-                generator=generator,
-                output_type="np",
-            )
+        call_kw: dict = {
+            "image": base,
+            "prompt": safe_prompt,
+            "width": width,
+            "height": height,
+            "num_frames": num_frames,
+            "frame_rate": eff_fps,
+            "num_inference_steps": eff_steps,
+            "guidance_scale": eff_guidance,
+            "negative_prompt": neg_used,
+            "generator": generator,
+            "output_type": "np",
+        }
+        _variants = (
+            call_kw,
+            {k: v for k, v in call_kw.items() if k != "negative_prompt"},
+            {k: v for k, v in call_kw.items() if k != "frame_rate"},
+            {k: v for k, v in call_kw.items() if k not in ("frame_rate", "negative_prompt")},
+        )
+        last_type_err: Optional[TypeError] = None
+        result = None
+        for variant in _variants:
+            filtered = _filter_pipeline_kwargs(pipe, variant)
+            dropped = sorted(set(variant) - set(filtered))
+            if dropped:
+                logger.warning("ltx skipping unsupported kwargs | dropped=%s", dropped)
+            try:
+                result = pipe(**filtered)
+                last_type_err = None
+                break
+            except TypeError as exc:
+                last_type_err = exc
+                logger.warning(
+                    "ltx pipe TypeError — trying older diffusers kw set | omitting=%s | exc=%s",
+                    sorted(set(call_kw.keys()) - set(variant.keys())),
+                    exc,
+                )
+        if result is None:
+            raise last_type_err if last_type_err else RuntimeError("ltx pipe returned empty result")
 
         frames_np = None
         if hasattr(result, "frames"):
@@ -266,13 +319,21 @@ class LtxVideoGenerator:
         elif isinstance(frames_np, list) and len(frames_np) == 1 and isinstance(frames_np[0], np.ndarray) and frames_np[0].ndim == 4:
             frames_np = frames_np[0]
 
-        logger.info("ltx writing video | frames=%d fps=%d", len(frames_np), fps)
+        encode_fps = max(8.0, min(120.0, float(eff_fps)))
+        logger.info("ltx writing video | frames=%d encode_fps=%.3f", len(frames_np), encode_fps)
         writer = imageio.get_writer(
-            str(output), 
-            fps=fps, 
-            codec="libx264", 
+            str(output),
+            fps=encode_fps,
+            codec="libx264",
             pixelformat="yuv420p",
-            output_params=["-movflags", "faststart"]
+            output_params=[
+                "-movflags",
+                "faststart",
+                "-crf",
+                "17",
+                "-preset",
+                "medium",
+            ],
         )
         try:
             for i, frame in enumerate(frames_np):

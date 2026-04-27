@@ -62,6 +62,20 @@ class VideoReq(BaseModel):
     prompt: str = Field(..., min_length=1)
     project_name: str = Field("default")
     scene_id: Optional[str] = None
+    fps: Optional[float] = Field(
+        None,
+        ge=8.0,
+        le=60.0,
+        description="Temporal frame_rate for generation (LTX-2 default 24)",
+    )
+    frames: Optional[int] = Field(None, ge=9, le=337, description="Rough target; snapped to 8n+1 internally")
+    num_inference_steps: Optional[int] = Field(None, ge=15, le=120)
+    guidance_scale: Optional[float] = Field(None, ge=1.05, le=30.0)
+    negative_prompt: Optional[str] = Field(
+        None,
+        description="Overrides default video negative prompt; omit to use server defaults",
+    )
+    seed: Optional[int] = Field(None, description="Optional reproducible seed")
 
 def get_safe_project_dir(base_dir: Path, proj_name: str) -> Path:
     safe_name = re.sub(r'[^a-zA-Z0-9_\-]', '_', proj_name)
@@ -178,7 +192,16 @@ def generate_image(req: ImageReq, request: Request) -> dict:
 @app.post("/generate-video")
 def generate_video(req: VideoReq, request: Request) -> dict:
     started = time.perf_counter()
-    logger.info("generate-video requested | image=%s | prompt_len=%d", req.image, len(req.prompt))
+    logger.info(
+        "generate-video requested | image=%s | prompt_len=%d | fps=%s frames=%s steps=%s guidance=%s seed=%s",
+        req.image,
+        len(req.prompt),
+        req.fps,
+        req.frames,
+        req.num_inference_steps,
+        req.guidance_scale,
+        req.seed,
+    )
     image_path = Path(req.image)
     if not image_path.exists():
         logger.warning("generate-video image not found | image=%s", req.image)
@@ -201,6 +224,12 @@ def generate_video(req: VideoReq, request: Request) -> dict:
                 image_path=str(image_path),
                 prompt=req.prompt,
                 output_path=str(p_dir / file_name),
+                fps=req.fps,
+                frames=req.frames,
+                num_inference_steps=req.num_inference_steps,
+                guidance_scale=req.guidance_scale,
+                negative_prompt=req.negative_prompt,
+                seed=req.seed,
             )
             rel_path = f"output/{safe_name}/{file_name}"
             download_url = build_public_url(request, f"download/{safe_name}/{file_name}")
