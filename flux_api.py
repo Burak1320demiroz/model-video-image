@@ -23,7 +23,7 @@ class FluxImageGenerator:
     Loads model on demand to avoid keeping VRAM occupied.
     """
 
-    def __init__(self, model_id: str = "black-forest-labs/FLUX.2-dev") -> None:
+    def __init__(self, model_id: str = "black-forest-labs/FLUX.1-dev") -> None:
         self.model_id = model_id
         self._pipe: Optional["DiffusionPipeline"] = None
 

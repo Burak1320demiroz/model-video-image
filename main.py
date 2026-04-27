@@ -9,8 +9,9 @@ from pathlib import Path
 from typing import Optional
 
 import torch
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -46,6 +47,7 @@ app.mount("/output", StaticFiles(directory=str(output_dir)), name="output")
 flux = FluxImageGenerator()
 ltx = LtxVideoGenerator()
 MODEL_LOCK = Lock()
+UNLOAD_AFTER_REQUEST = os.getenv("UNLOAD_AFTER_REQUEST", "0").lower() in {"1", "true", "yes"}
 
 
 class ImageReq(BaseModel):
@@ -66,6 +68,17 @@ def get_safe_project_dir(base_dir: Path, proj_name: str) -> Path:
     p = base_dir / safe_name
     p.mkdir(parents=True, exist_ok=True)
     return p
+
+
+def safe_project_name(proj_name: str) -> str:
+    safe_name = re.sub(r'[^a-zA-Z0-9_\-]', '_', proj_name)
+    return safe_name or "default"
+
+
+def build_public_url(request: Request, rel_path: str) -> str:
+    proto = request.headers.get("x-forwarded-proto", request.url.scheme)
+    host = request.headers.get("x-forwarded-host", request.headers.get("host", request.url.netloc))
+    return f"{proto}://{host}/{rel_path}"
 
 
 def release_vram() -> None:
@@ -109,7 +122,7 @@ def api_status() -> dict:
 
 
 @app.post("/generate-image")
-def generate_image(req: ImageReq) -> dict:
+def generate_image(req: ImageReq, request: Request) -> dict:
     started = time.perf_counter()
     logger.info("generate-image requested | seed=%s | prompt_len=%d", req.seed, len(req.prompt))
     with MODEL_LOCK:
@@ -132,6 +145,8 @@ def generate_image(req: ImageReq) -> dict:
             )
             # URL friendly path starting with output/
             rel_path = f"output/{safe_name}/{file_name}"
+            download_url = build_public_url(request, f"download/{safe_name}/{file_name}")
+            public_url = build_public_url(request, rel_path)
             
             elapsed = time.perf_counter() - started
             logger.info(
@@ -140,19 +155,26 @@ def generate_image(req: ImageReq) -> dict:
                 elapsed,
                 gpu_stats(),
             )
-            return {"image_url": rel_path}
+            return {
+                "image_url": rel_path,
+                "image_public_url": public_url,
+                "image_download_url": download_url,
+            }
         except Exception as exc:
             logger.exception("generate-image failed | %s", gpu_stats())
             raise HTTPException(status_code=500, detail=f"image generation failed: {exc}") from exc
         finally:
-            logger.info("generate-image finally unload flux")
-            flux.unload()
-            release_vram()
+            if UNLOAD_AFTER_REQUEST:
+                logger.info("generate-image finally unload flux")
+                flux.unload()
+                release_vram()
+            else:
+                logger.info("generate-image keeping flux loaded for faster next request")
             logger.info("generate-image cleanup complete | %s", gpu_stats())
 
 
 @app.post("/generate-video")
-def generate_video(req: VideoReq) -> dict:
+def generate_video(req: VideoReq, request: Request) -> dict:
     started = time.perf_counter()
     logger.info("generate-video requested | image=%s | prompt_len=%d", req.image, len(req.prompt))
     image_path = Path(req.image)
@@ -179,6 +201,8 @@ def generate_video(req: VideoReq) -> dict:
                 output_path=str(p_dir / file_name),
             )
             rel_path = f"output/{safe_name}/{file_name}"
+            download_url = build_public_url(request, f"download/{safe_name}/{file_name}")
+            public_url = build_public_url(request, rel_path)
             
             elapsed = time.perf_counter() - started
             logger.info(
@@ -187,15 +211,46 @@ def generate_video(req: VideoReq) -> dict:
                 elapsed,
                 gpu_stats(),
             )
-            return {"video_url": rel_path}
+            return {
+                "video_url": rel_path,
+                "video_public_url": public_url,
+                "video_download_url": download_url,
+            }
         except Exception as exc:
             logger.exception("generate-video failed | %s", gpu_stats())
             raise HTTPException(status_code=500, detail=f"video generation failed: {exc}") from exc
         finally:
-            logger.info("generate-video finally unload ltx")
-            ltx.unload()
-            release_vram()
+            if UNLOAD_AFTER_REQUEST:
+                logger.info("generate-video finally unload ltx")
+                ltx.unload()
+                release_vram()
+            else:
+                logger.info("generate-video keeping ltx loaded for faster next request")
             logger.info("generate-video cleanup complete | %s", gpu_stats())
+
+
+@app.get("/download/{project_name}/{file_name}")
+def download_file(
+    project_name: str,
+    file_name: str,
+    download: bool = Query(True, description="Serve as attachment when true"),
+) -> FileResponse:
+    safe_proj = safe_project_name(project_name)
+    requested_path = (output_dir / safe_proj / file_name).resolve()
+    output_root = output_dir.resolve()
+
+    if output_root not in requested_path.parents:
+        raise HTTPException(status_code=400, detail="invalid download path")
+    if not requested_path.exists() or not requested_path.is_file():
+        raise HTTPException(status_code=404, detail="file not found")
+
+    disposition_filename = requested_path.name if download else None
+    media_type = "application/octet-stream" if download else None
+    return FileResponse(
+        path=str(requested_path),
+        filename=disposition_filename,
+        media_type=media_type,
+    )
 
 
 if __name__ == "__main__":

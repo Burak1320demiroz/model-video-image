@@ -51,7 +51,9 @@ Response:
 
 ```json
 {
-  "image_url": "output/image.png"
+  "image_url": "output/default/img_ab12cd34.png",
+  "image_public_url": "https://<pod-url>/output/default/img_ab12cd34.png",
+  "image_download_url": "https://<pod-url>/download/default/img_ab12cd34.png"
 }
 ```
 
@@ -72,8 +74,21 @@ Response:
 
 ```json
 {
-  "video_url": "output/video.mp4"
+  "video_url": "output/default/vid_ef56gh78.mp4",
+  "video_public_url": "https://<pod-url>/output/default/vid_ef56gh78.mp4",
+  "video_download_url": "https://<pod-url>/download/default/vid_ef56gh78.mp4"
 }
+```
+
+### Dosyayi PC'ye indirme
+
+Uretim cevabinda donen `*_download_url` adreslerini direkt tarayicida acabilir veya `curl` ile kendi bilgisayarina indirebilirsin.
+
+Ornek:
+
+```bash
+curl -L "https://<pod-url>/download/default/img_ab12cd34.png" -o flux-image.png
+curl -L "https://<pod-url>/download/default/vid_ef56gh78.mp4" -o ltx-video.mp4
 ```
 
 ## 3) cURL ile istek atma
@@ -157,9 +172,10 @@ Ornek:
     2. modeli RAM/VRAM'den sil
     3. LTX load -> video uret
 - API bu repoda artik bu sirayi kod seviyesinde zorunlu uygular:
-  - `/generate-image` cagrisi once LTX'i unload eder, is bitince FLUX'u unload eder.
-  - `/generate-video` cagrisi once FLUX'u unload eder, is bitince LTX'i unload eder.
+  - `/generate-image` cagrisi once LTX'i unload eder.
+  - `/generate-video` cagrisi once FLUX'u unload eder.
   - Endpointler tek bir model kilidi ile sirali calisir; ayni anda iki modelin bellekte tutulmasi engellenir.
+  - Varsayilan davranis hiz odaklidir: is bitince aktif model unload edilmez. `UNLOAD_AFTER_REQUEST=1` ile eski davranisa donebilirsiniz.
 - Islem sirasi onerisi:
   1. `generate-image`
   2. VRAM temizligi
@@ -203,5 +219,5 @@ Notlar:
 
 - Bu repoda `torch` artik `requirements.txt` icinde tutulmuyor; RunPod taban imaji ile uyumlu surumu manuel kurmaniz gerekir.
 - Ana sayfa (`/`) tanimli degildir, bu nedenle `/` icin `404` normaldir.
-- `black-forest-labs/FLUX.2-dev` gated modeldir; Hugging Face hesabinizda model erisimi ve token login'i gerekli.
+- `black-forest-labs/FLUX.1-dev` gated modeldir; Hugging Face hesabinizda model erisimi ve token login'i gerekli.
 - Baslatma scripti (`scripts/runpod_start.sh`) varsayilan olarak cache'i `/workspace/hf-cache` altina alir ve `HF_HUB_DISABLE_XET=1` kullanir.
