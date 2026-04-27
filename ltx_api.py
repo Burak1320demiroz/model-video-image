@@ -267,7 +267,13 @@ class LtxVideoGenerator:
             frames_np = frames_np[0]
 
         logger.info("ltx writing video | frames=%d fps=%d", len(frames_np), fps)
-        writer = imageio.get_writer(str(output), fps=fps, codec="libx264", pixelformat="yuv420p")
+        writer = imageio.get_writer(
+            str(output), 
+            fps=fps, 
+            codec="libx264", 
+            pixelformat="yuv420p",
+            output_params=["-movflags", "faststart"]
+        )
         try:
             for i, frame in enumerate(frames_np):
                 normalized = self._normalize_frame(frame)
