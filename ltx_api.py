@@ -1,6 +1,7 @@
 import gc
 import inspect
 import logging
+import os
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
@@ -19,11 +20,13 @@ OUTPUT_DIR = Path("output")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 logger = logging.getLogger("ltx")
 
-# Conservative defaults aligned with upstream LTX / LTX-2 pipelines (Lightricks docs + diffusers).
+# Defaults tuned for high-end GPUs (e.g. RTX 4090). Lower with env or request fields if OOM.
+# LTX_MAX_FRAMES / LTX_MIN_* / LTX_CPU_OFFLOAD override behaviour.
 DEFAULT_VIDEO_FPS = 24.0
-DEFAULT_VIDEO_FRAMES = 121
-DEFAULT_INFERENCE_STEPS = 40
-DEFAULT_GUIDANCE_SCALE = 4.0
+DEFAULT_VIDEO_FRAMES = 193  # 8n+1, ~8s @ 24fps — stronger temporal motion than 121
+DEFAULT_INFERENCE_STEPS = 52
+DEFAULT_GUIDANCE_SCALE = 4.25
+DEFAULT_MAX_FRAMES_CAP = 401  # 8n+1 ceiling for uncapped requests (50*8+1)
 DEFAULT_NEGATIVE_PROMPT = (
     "worst quality, low resolution, blurry, jittery, distorted motion, flickering, "
     "warped anatomy, unnatural movement, watermark, logo, subtitles, text artifacts"
@@ -70,15 +73,19 @@ class LtxVideoGenerator:
         return value if remainder == 0 else value + (8 - remainder)
 
     @staticmethod
-    def _compress_prompt(prompt: str, max_words: int = 150) -> str:
+    def _compress_prompt(prompt: str, max_words: int = 220) -> str:
         words = prompt.split()
         if len(words) <= max_words:
             return prompt
         return " ".join(words[:max_words])
 
     @staticmethod
-    def _upscale_target_size(raw_w: int, raw_h: int, min_w: int = 1280, min_h: int = 704) -> tuple[int, int]:
-        scale = max(min_w / max(raw_w, 1), min_h / max(raw_h, 1), 1.0)
+    def _upscale_target_size(raw_w: int, raw_h: int, min_w: Optional[int] = None, min_h: Optional[int] = None) -> tuple[int, int]:
+        mw = int(os.getenv("LTX_MIN_WIDTH", "1408")) if min_w is None else int(min_w)
+        mh = int(os.getenv("LTX_MIN_HEIGHT", "768")) if min_h is None else int(min_h)
+        mw = max(256, (mw // 32) * 32)
+        mh = max(256, (mh // 32) * 32)
+        scale = max(mw / max(raw_w, 1), mh / max(raw_h, 1), 1.0)
         return int(raw_w * scale), int(raw_h * scale)
 
     def _configure_pipe_memory(self, pipe: "LTX2ImageToVideoPipeline | LTXImageToVideoPipeline") -> None:
@@ -86,12 +93,17 @@ class LtxVideoGenerator:
             pipe.to(DEVICE)
             return
 
-        try:
-            pipe.enable_model_cpu_offload()
-            logger.info("ltx cpu offload enabled for lower vram")
-        except Exception:
-            logger.warning("ltx cpu offload unavailable, moving model to cuda directly")
+        use_offload = os.getenv("LTX_CPU_OFFLOAD", "0").lower() in {"1", "true", "yes"}
+        if use_offload:
+            try:
+                pipe.enable_model_cpu_offload()
+                logger.info("ltx cpu offload enabled (LTX_CPU_OFFLOAD=1)")
+            except Exception:
+                logger.warning("ltx cpu offload unavailable, moving model to cuda directly")
+                pipe.to(DEVICE)
+        else:
             pipe.to(DEVICE)
+            logger.info("ltx full-GPU load (set LTX_CPU_OFFLOAD=1 if you hit CUDA OOM)")
 
     @staticmethod
     def _normalize_frame(frame: np.ndarray) -> np.ndarray:
@@ -209,7 +221,7 @@ class LtxVideoGenerator:
         eff_frames = DEFAULT_VIDEO_FRAMES if frames is None else int(frames)
         eff_frames = max(9, eff_frames)
         eff_steps = DEFAULT_INFERENCE_STEPS if num_inference_steps is None else int(num_inference_steps)
-        eff_steps = max(15, min(120, eff_steps))
+        eff_steps = max(15, min(150, eff_steps))
         eff_guidance = DEFAULT_GUIDANCE_SCALE if guidance_scale is None else float(guidance_scale)
         eff_guidance = max(1.001, min(30.0, eff_guidance))
         neg_used = DEFAULT_NEGATIVE_PROMPT if negative_prompt is None else negative_prompt
@@ -233,7 +245,10 @@ class LtxVideoGenerator:
         target_w, target_h = self._upscale_target_size(raw_w, raw_h)
         width = self._snap_to_32(target_w)
         height = self._snap_to_32(target_h)
-        eff_frames_capped = min(eff_frames, 337)
+        max_frames_env = os.getenv("LTX_MAX_FRAMES")
+        hard_cap = int(max_frames_env) if max_frames_env else DEFAULT_MAX_FRAMES_CAP
+        hard_cap = max(9, min(513, hard_cap))
+        eff_frames_capped = min(eff_frames, hard_cap)
         num_frames = self._snap_frames(eff_frames_capped)
         if (width, height) != (raw_w, raw_h):
             base = base.resize((width, height), Image.BICUBIC)
@@ -260,7 +275,7 @@ class LtxVideoGenerator:
         elif DEVICE == "cpu" and seed is not None:
             generator = torch.Generator().manual_seed(int(seed) & 0x7FFFFFFF)
 
-        safe_prompt = self._compress_prompt(prompt, max_words=150)
+        safe_prompt = self._compress_prompt(prompt, max_words=220)
         if safe_prompt != prompt:
             logger.info("ltx prompt truncated | original_words=%d kept_words=%d", len(prompt.split()), len(safe_prompt.split()))
 
@@ -330,9 +345,9 @@ class LtxVideoGenerator:
                 "-movflags",
                 "faststart",
                 "-crf",
-                "17",
+                "16",
                 "-preset",
-                "medium",
+                "slow",
             ],
         )
         try:
