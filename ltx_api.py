@@ -23,13 +23,18 @@ logger = logging.getLogger("ltx")
 # Defaults tuned for high-end GPUs (e.g. RTX 4090). Lower with env or request fields if OOM.
 # LTX_MAX_FRAMES / LTX_MIN_* / LTX_CPU_OFFLOAD override behaviour.
 DEFAULT_VIDEO_FPS = 24.0
-DEFAULT_VIDEO_FRAMES = 193  # 8n+1, ~8s @ 24fps — stronger temporal motion than 121
+# ~3× prior default (193): 579 → snapped to 8n+1 = 585 (~24s @ 24fps)
+DEFAULT_VIDEO_FRAMES = 585
 DEFAULT_INFERENCE_STEPS = 52
-DEFAULT_GUIDANCE_SCALE = 4.25
-DEFAULT_MAX_FRAMES_CAP = 401  # 8n+1 ceiling for uncapped requests (50*8+1)
+# Slightly below max: very high CFG often worsens identity drift / face morphing in I2V.
+DEFAULT_GUIDANCE_SCALE = 3.85
+# ~3× prior cap (401): 1203 → 8n+1 = 1209; absolute ceiling raised so this is not clipped at 513
+DEFAULT_MAX_FRAMES_CAP = 1209
 DEFAULT_NEGATIVE_PROMPT = (
     "worst quality, low resolution, blurry, jittery, distorted motion, flickering, "
-    "warped anatomy, unnatural movement, watermark, logo, subtitles, text artifacts"
+    "warped anatomy, unnatural movement, morphing face, identity drift, melting features, "
+    "asymmetric eyes, changing facial structure, duplicate limbs, extra fingers, "
+    "liquid hair, chaotic hair physics, watermark, logo, subtitles, text artifacts"
 )
 
 
@@ -247,7 +252,8 @@ class LtxVideoGenerator:
         height = self._snap_to_32(target_h)
         max_frames_env = os.getenv("LTX_MAX_FRAMES")
         hard_cap = int(max_frames_env) if max_frames_env else DEFAULT_MAX_FRAMES_CAP
-        hard_cap = max(9, min(513, hard_cap))
+        # Allow long clips when VRAM permits; override down with LTX_MAX_FRAMES if needed.
+        hard_cap = max(9, min(1537, hard_cap))
         eff_frames_capped = min(eff_frames, hard_cap)
         num_frames = self._snap_frames(eff_frames_capped)
         if (width, height) != (raw_w, raw_h):

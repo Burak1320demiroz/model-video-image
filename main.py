@@ -68,7 +68,7 @@ class VideoReq(BaseModel):
         le=60.0,
         description="Temporal frame_rate for generation (LTX-2 default 24)",
     )
-    frames: Optional[int] = Field(None, ge=9, le=401, description="Rough target; snapped to 8n+1; server cap via LTX_MAX_FRAMES")
+    frames: Optional[int] = Field(None, ge=9, le=1209, description="Rough target; snapped to 8n+1; hard cap via LTX_MAX_FRAMES env")
     num_inference_steps: Optional[int] = Field(None, ge=15, le=150)
     guidance_scale: Optional[float] = Field(None, ge=1.05, le=30.0)
     negative_prompt: Optional[str] = Field(
