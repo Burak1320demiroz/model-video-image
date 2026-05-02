@@ -26,7 +26,7 @@ logger = logging.getLogger("ltx")
 DEFAULT_VIDEO_FPS = 120.0
 # Çok daha uzun ve akıcı video için (481 / 120fps = ~4 saniye muazzam akıcı motion)
 DEFAULT_VIDEO_FRAMES = 481
-DEFAULT_INFERENCE_STEPS = 40
+DEFAULT_INFERENCE_STEPS = 100
 # Yüksek guidance scale (CFG), LTX'te yüzlerin erimesine (morphing) ve deformasyona sebep olur. O yüzden 3.0'a indiriyoruz.
 DEFAULT_GUIDANCE_SCALE = 3.0
 # DiT modellerinde uzun negatif prompt modelin dikkatini bozar, boş bırakıyoruz.
