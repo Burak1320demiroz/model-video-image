@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, Optional
 import imageio.v2 as imageio
 import numpy as np
 import torch
+torch.backends.cuda.matmul.allow_tf32 = True
 from PIL import Image
 
 if TYPE_CHECKING:
@@ -23,8 +24,8 @@ logger = logging.getLogger("ltx")
 # Defaults tuned for high-end GPUs (e.g. RTX 4090). Lower with env or request fields if OOM.
 # LTX_MAX_FRAMES / LTX_MIN_* / LTX_CPU_OFFLOAD override behaviour.
 DEFAULT_VIDEO_FPS = 24.0
-# Test için 65 frame (daha tutarlı motion için).
-DEFAULT_VIDEO_FRAMES = 65
+# Test için 49 frame (drift azaltmak için).
+DEFAULT_VIDEO_FRAMES = 49
 DEFAULT_INFERENCE_STEPS = 40
 # Yüksek guidance scale (CFG), LTX'te yüzlerin erimesine (morphing) ve deformasyona sebep olur. O yüzden 3.0'a indiriyoruz.
 DEFAULT_GUIDANCE_SCALE = 3.0
@@ -51,8 +52,8 @@ class LtxVideoGenerator:
 
     def __init__(
         self,
-        model_id: str = "Lightricks/LTX-2.3-fp8",
-        fallback_model_id: Optional[str] = "Lightricks/LTX-Video",
+        model_id: str = "Lightricks/ltx-2.3-22b-distilled-fp8",
+        fallback_model_id: Optional[str] = None,
     ) -> None:
         self.model_id = model_id
         self.fallback_model_id = fallback_model_id
@@ -73,7 +74,7 @@ class LtxVideoGenerator:
         return value if remainder == 0 else value + (8 - remainder)
 
     @staticmethod
-    def _compress_prompt(prompt: str, max_words: int = 220) -> str:
+    def _compress_prompt(prompt: str, max_words: int = 60) -> str:
         words = prompt.split()
         if len(words) <= max_words:
             return prompt
@@ -81,9 +82,9 @@ class LtxVideoGenerator:
 
     @staticmethod
     def _upscale_target_size(raw_w: int, raw_h: int, min_w: Optional[int] = None, min_h: Optional[int] = None) -> tuple[int, int]:
-        # LTX-Video 768x512 çözünürlüğünde sweet spot'tadır.
-        mw = int(os.getenv("LTX_MIN_WIDTH", "768")) if min_w is None else int(min_w)
-        mh = int(os.getenv("LTX_MIN_HEIGHT", "512")) if min_h is None else int(min_h)
+        # LTX-Video 832x480 çözünürlüğünde sweet spot'tadır.
+        mw = int(os.getenv("LTX_MIN_WIDTH", "832")) if min_w is None else int(min_w)
+        mh = int(os.getenv("LTX_MIN_HEIGHT", "480")) if min_h is None else int(min_h)
         mw = max(256, (mw // 32) * 32)
         mh = max(256, (mh // 32) * 32)
         
@@ -297,7 +298,7 @@ class LtxVideoGenerator:
         elif DEVICE == "cpu" and seed is not None:
             generator = torch.Generator().manual_seed(int(seed) & 0x7FFFFFFF)
 
-        safe_prompt = self._compress_prompt(prompt, max_words=220)
+        safe_prompt = self._compress_prompt(prompt, max_words=60)
         if safe_prompt != prompt:
             logger.info("ltx prompt truncated | original_words=%d kept_words=%d", len(prompt.split()), len(safe_prompt.split()))
 
