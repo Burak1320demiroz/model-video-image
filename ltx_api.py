@@ -23,8 +23,8 @@ logger = logging.getLogger("ltx")
 # Defaults tuned for high-end GPUs (e.g. RTX 4090). Lower with env or request fields if OOM.
 # LTX_MAX_FRAMES / LTX_MIN_* / LTX_CPU_OFFLOAD override behaviour.
 DEFAULT_VIDEO_FPS = 30.0
-# ~3× prior default (193): 579 → snapped to 8n+1 = 585 (~19.5s @ 30fps)
-DEFAULT_VIDEO_FRAMES = 585
+# 8 seconds at 30fps = 240 frames -> snapped to 8n+1 = 241
+DEFAULT_VIDEO_FRAMES = 241
 DEFAULT_INFERENCE_STEPS = 52
 # Slightly below max: very high CFG often worsens identity drift / face morphing in I2V.
 DEFAULT_GUIDANCE_SCALE = 3.85

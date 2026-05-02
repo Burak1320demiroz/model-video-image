@@ -41,14 +41,11 @@ echo ""
 echo "📦 [2/5] pip güncelleniyor..."
 python -m pip install --upgrade pip -q
 
-# ---- 3) PyTorch (CUDA 12.4) ----
+# ---- 3) PyTorch (CUDA 12.4+) ----
 echo ""
-echo "🔥 [3/5] PyTorch + CUDA 12.4 kuruluyor..."
-python -m pip install \
-    torch==2.5.1+cu124 \
-    torchvision==0.20.1+cu124 \
-    torchaudio==2.5.1+cu124 \
-    --index-url "$TORCH_INDEX_URL" -q
+echo "🔥 [3/5] PyTorch kontrol ediliyor..."
+# Sadece eksikse veya eski sürümse kur, RunPod template'indeki PyTorch 2.8'i (RTX 5090 için) bozma
+python -m pip install torch torchvision torchaudio -q
 
 # PyTorch CUDA doğrulaması
 CUDA_OK=$(python -c "import torch; print('yes' if torch.cuda.is_available() else 'no')" 2>/dev/null || echo "no")
