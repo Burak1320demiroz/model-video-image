@@ -110,6 +110,19 @@ class LtxVideoGenerator:
             pipe.to(DEVICE)
             logger.info("ltx full-GPU load (set LTX_CPU_OFFLOAD=1 if you hit CUDA OOM)")
 
+        # ÇOK KRİTİK: VAE Slicing ve Tiling açılmazsa 241 kare videoyu decode ederken 5090 bile çöker
+        try:
+            pipe.enable_vae_slicing()
+            logger.info("ltx vae slicing enabled")
+        except AttributeError:
+            pass
+            
+        try:
+            pipe.enable_vae_tiling()
+            logger.info("ltx vae tiling enabled")
+        except AttributeError:
+            pass
+
     @staticmethod
     def _normalize_frame(frame: np.ndarray) -> np.ndarray:
         arr = np.asarray(frame)
