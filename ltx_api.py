@@ -23,9 +23,9 @@ logger = logging.getLogger("ltx")
 
 # Defaults tuned for high-end GPUs (e.g. RTX 4090). Lower with env or request fields if OOM.
 # LTX_MAX_FRAMES / LTX_MIN_* / LTX_CPU_OFFLOAD override behaviour.
-DEFAULT_VIDEO_FPS = 60.0
-# Daha akıcı bir video için kare sayısını 161 (yaklaşık 6.7 saniye) yapıyoruz.
-DEFAULT_VIDEO_FRAMES = 161
+DEFAULT_VIDEO_FPS = 90.0
+# Çok daha uzun ve akıcı video için (321 / 90fps = 3.5 saniye çok akıcı motion)
+DEFAULT_VIDEO_FRAMES = 321
 DEFAULT_INFERENCE_STEPS = 40
 # Yüksek guidance scale (CFG), LTX'te yüzlerin erimesine (morphing) ve deformasyona sebep olur. O yüzden 3.0'a indiriyoruz.
 DEFAULT_GUIDANCE_SCALE = 3.0
@@ -239,7 +239,7 @@ class LtxVideoGenerator:
         Generate video from a source image with LTX.
         """
         eff_fps = DEFAULT_VIDEO_FPS if fps is None else float(fps)
-        eff_fps = max(8.0, min(60.0, eff_fps))
+        eff_fps = max(8.0, min(120.0, eff_fps))
         eff_frames = DEFAULT_VIDEO_FRAMES if frames is None else int(frames)
         eff_frames = max(9, eff_frames)
         eff_steps = DEFAULT_INFERENCE_STEPS if num_inference_steps is None else int(num_inference_steps)
