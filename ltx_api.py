@@ -23,7 +23,7 @@ logger = logging.getLogger("ltx")
 
 # Defaults tuned for high-end GPUs (e.g. RTX 4090). Lower with env or request fields if OOM.
 # LTX_MAX_FRAMES / LTX_MIN_* / LTX_CPU_OFFLOAD override behaviour.
-DEFAULT_VIDEO_FPS = 24.0
+DEFAULT_VIDEO_FPS = 60.0
 # Daha akıcı bir video için kare sayısını 161 (yaklaşık 6.7 saniye) yapıyoruz.
 DEFAULT_VIDEO_FRAMES = 161
 DEFAULT_INFERENCE_STEPS = 40
