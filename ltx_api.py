@@ -52,7 +52,7 @@ class LtxVideoGenerator:
 
     def __init__(
         self,
-        model_id: str = "Lightricks/ltx-2.3-22b-distilled-fp8",
+        model_id: str = "Lightricks/LTX-2.3",
         fallback_model_id: Optional[str] = None,
     ) -> None:
         self.model_id = model_id
