@@ -23,9 +23,9 @@ logger = logging.getLogger("ltx")
 
 # Defaults tuned for high-end GPUs (e.g. RTX 4090). Lower with env or request fields if OOM.
 # LTX_MAX_FRAMES / LTX_MIN_* / LTX_CPU_OFFLOAD override behaviour.
-DEFAULT_VIDEO_FPS = 100
-# Çok daha uzun ve akıcı video için (481 / 120fps = ~4 saniye muazzam akıcı motion)
-DEFAULT_VIDEO_FRAMES = 400
+DEFAULT_VIDEO_FPS = 24.0
+# Anatomik bozulmayı önlemek için LTX'in native sınırı: 121 kare (5 saniye)
+DEFAULT_VIDEO_FRAMES = 121
 DEFAULT_INFERENCE_STEPS = 40
 # Yüksek guidance scale (CFG), LTX'te yüzlerin erimesine (morphing) ve deformasyona sebep olur. O yüzden 3.0'a indiriyoruz.
 DEFAULT_GUIDANCE_SCALE = 3.0
