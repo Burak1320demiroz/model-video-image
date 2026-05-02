@@ -30,6 +30,7 @@ DEFAULT_INFERENCE_STEPS = 40
 DEFAULT_GUIDANCE_SCALE = 3.0
 # DiT modellerinde uzun negatif prompt modelin dikkatini bozar, boş bırakıyoruz.
 DEFAULT_NEGATIVE_PROMPT = ""
+DEFAULT_MAX_FRAMES_CAP = 1209
 
 
 def _filter_pipeline_kwargs(pipe: Any, kw: dict) -> dict:
