@@ -98,7 +98,8 @@ class LtxVideoGenerator:
             pipe.to(DEVICE)
             return
 
-        use_offload = os.getenv("LTX_CPU_OFFLOAD", "0").lower() in {"1", "true", "yes"}
+        # RTX 5090'da bile 241 kare (8s video) VAE aşamasında çöktüğü için CPU Offload ZORUNLU
+        use_offload = True
         if use_offload:
             try:
                 pipe.enable_model_cpu_offload()
@@ -112,16 +113,22 @@ class LtxVideoGenerator:
 
         # ÇOK KRİTİK: VAE Slicing ve Tiling açılmazsa 241 kare videoyu decode ederken 5090 bile çöker
         try:
-            pipe.enable_vae_slicing()
+            if hasattr(pipe, 'enable_vae_slicing'):
+                pipe.enable_vae_slicing()
+            elif hasattr(pipe.vae, 'enable_slicing'):
+                pipe.vae.enable_slicing()
             logger.info("ltx vae slicing enabled")
-        except AttributeError:
-            pass
+        except Exception as e:
+            logger.warning(f"vae slicing could not be enabled: {e}")
             
         try:
-            pipe.enable_vae_tiling()
+            if hasattr(pipe, 'enable_vae_tiling'):
+                pipe.enable_vae_tiling()
+            elif hasattr(pipe.vae, 'enable_tiling'):
+                pipe.vae.enable_tiling()
             logger.info("ltx vae tiling enabled")
-        except AttributeError:
-            pass
+        except Exception as e:
+            logger.warning(f"vae tiling could not be enabled: {e}")
 
     @staticmethod
     def _normalize_frame(frame: np.ndarray) -> np.ndarray:
