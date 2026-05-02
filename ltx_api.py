@@ -28,14 +28,8 @@ DEFAULT_VIDEO_FRAMES = 121
 DEFAULT_INFERENCE_STEPS = 40
 # Yüksek guidance scale (CFG), LTX'te yüzlerin erimesine (morphing) ve deformasyona sebep olur. O yüzden 3.0'a indiriyoruz.
 DEFAULT_GUIDANCE_SCALE = 3.0
-# ~3× prior cap (401): 1203 → 8n+1 = 1209; absolute ceiling raised so this is not clipped at 513
-DEFAULT_MAX_FRAMES_CAP = 1209
-DEFAULT_NEGATIVE_PROMPT = (
-    "worst quality, low resolution, blurry, jittery, distorted motion, flickering, "
-    "warped anatomy, unnatural movement, morphing face, identity drift, melting features, "
-    "asymmetric eyes, changing facial structure, duplicate limbs, extra fingers, "
-    "liquid hair, chaotic hair physics, watermark, logo, subtitles, text artifacts"
-)
+# DiT modellerinde uzun negatif prompt modelin dikkatini bozar, boş bırakıyoruz.
+DEFAULT_NEGATIVE_PROMPT = ""
 
 
 def _filter_pipeline_kwargs(pipe: Any, kw: dict) -> dict:
@@ -86,9 +80,9 @@ class LtxVideoGenerator:
 
     @staticmethod
     def _upscale_target_size(raw_w: int, raw_h: int, min_w: Optional[int] = None, min_h: Optional[int] = None) -> tuple[int, int]:
-        # Native LTX-Video training resolution is ~768x512. Forcing 1408 causes severe artifacts.
-        mw = int(os.getenv("LTX_MIN_WIDTH", "768")) if min_w is None else int(min_w)
-        mh = int(os.getenv("LTX_MIN_HEIGHT", "512")) if min_h is None else int(min_h)
+        # LTX-2.3 1024x576 çözünürlüğünü çok iyi işler, çok fazla ezmeye gerek yok.
+        mw = int(os.getenv("LTX_MIN_WIDTH", "1024")) if min_w is None else int(min_w)
+        mh = int(os.getenv("LTX_MIN_HEIGHT", "576")) if min_h is None else int(min_h)
         mw = max(256, (mw // 32) * 32)
         mh = max(256, (mh // 32) * 32)
         
@@ -128,14 +122,8 @@ class LtxVideoGenerator:
         except Exception as e:
             logger.warning(f"vae slicing could not be enabled: {e}")
             
-        try:
-            if hasattr(pipe, 'enable_vae_tiling'):
-                pipe.enable_vae_tiling()
-            elif hasattr(pipe.vae, 'enable_tiling'):
-                pipe.vae.enable_tiling()
-            logger.info("ltx vae tiling enabled")
-        except Exception as e:
-            logger.warning(f"vae tiling could not be enabled: {e}")
+        # VAE Tiling video birleşim yerlerinde çamurlaşma yapar, O YÜZDEN KAPATILDI.
+        # Sadece Slicing açık kalıyor, 5090'da CPU Offload + Slicing OOM'i önlemeye yeterlidir.
 
     @staticmethod
     def _normalize_frame(frame: np.ndarray) -> np.ndarray:
