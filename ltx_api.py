@@ -25,9 +25,9 @@ logger = logging.getLogger("ltx")
 DEFAULT_VIDEO_FPS = 24.0
 # 5 seconds at 24fps = 120 frames -> snapped to 8n+1 = 121 (LTX native maximum quality)
 DEFAULT_VIDEO_FRAMES = 121
-DEFAULT_INFERENCE_STEPS = 52
-# Slightly below max: very high CFG often worsens identity drift / face morphing in I2V.
-DEFAULT_GUIDANCE_SCALE = 3.85
+DEFAULT_INFERENCE_STEPS = 40
+# Yüksek guidance scale (CFG), LTX'te yüzlerin erimesine (morphing) ve deformasyona sebep olur. O yüzden 3.0'a indiriyoruz.
+DEFAULT_GUIDANCE_SCALE = 3.0
 # ~3× prior cap (401): 1203 → 8n+1 = 1209; absolute ceiling raised so this is not clipped at 513
 DEFAULT_MAX_FRAMES_CAP = 1209
 DEFAULT_NEGATIVE_PROMPT = (
@@ -91,7 +91,13 @@ class LtxVideoGenerator:
         mh = int(os.getenv("LTX_MIN_HEIGHT", "512")) if min_h is None else int(min_h)
         mw = max(256, (mw // 32) * 32)
         mh = max(256, (mh // 32) * 32)
-        scale = max(mw / max(raw_w, 1), mh / max(raw_h, 1), 1.0)
+        
+        # Eğer orijinal resim LTX'in sevdiği boyuttan büyükse, AŞAĞI ÖLÇEKLENDİR. (Downscale)
+        # Önceki kod sadece upscale ediyordu, bu da 1024x576 çözünürlüğünde modelin saçmalamasına yol açıyordu.
+        scale_w = mw / max(raw_w, 1)
+        scale_h = mh / max(raw_h, 1)
+        scale = min(scale_w, scale_h, 1.0) # Hem upscale hem downscale yapmasını engellemiyoruz, sadece sınıra oturtuyoruz.
+        
         return int(raw_w * scale), int(raw_h * scale)
 
     def _configure_pipe_memory(self, pipe: "LTX2ImageToVideoPipeline | LTXImageToVideoPipeline") -> None:
