@@ -50,11 +50,23 @@ MODEL_LOCK = Lock()
 UNLOAD_AFTER_REQUEST = os.getenv("UNLOAD_AFTER_REQUEST", "0").lower() in {"1", "true", "yes"}
 
 
+class CharacterRef(BaseModel):
+    name: str
+    reference_image: str
+    identity_strength: float = 0.8
+
+class EnvironmentRef(BaseModel):
+    name: str
+    reference_image: str
+    structure_strength: float = 0.7
+
 class ImageReq(BaseModel):
     prompt: str = Field(..., min_length=1)
     seed: Optional[int] = None
     project_name: str = Field("default")
     scene_id: Optional[str] = None
+    character_references: Optional[list[CharacterRef]] = None
+    environment_reference: Optional[EnvironmentRef] = None
 
 
 class VideoReq(BaseModel):
@@ -158,6 +170,8 @@ def generate_image(req: ImageReq, request: Request) -> dict:
                 prompt=req.prompt,
                 output_path=str(p_dir / file_name),
                 seed=req.seed,
+                character_references=[ref.model_dump() for ref in req.character_references] if req.character_references else None,
+                environment_reference=req.environment_reference.model_dump() if req.environment_reference else None,
             )
             # URL friendly path starting with output/
             rel_path = f"output/{safe_name}/{file_name}"
