@@ -22,9 +22,9 @@ logger = logging.getLogger("ltx")
 
 # Defaults tuned for high-end GPUs (e.g. RTX 4090). Lower with env or request fields if OOM.
 # LTX_MAX_FRAMES / LTX_MIN_* / LTX_CPU_OFFLOAD override behaviour.
-DEFAULT_VIDEO_FPS = 30.0
-# 8 seconds at 30fps = 240 frames -> snapped to 8n+1 = 241
-DEFAULT_VIDEO_FRAMES = 241
+DEFAULT_VIDEO_FPS = 24.0
+# 5 seconds at 24fps = 120 frames -> snapped to 8n+1 = 121 (LTX native maximum quality)
+DEFAULT_VIDEO_FRAMES = 121
 DEFAULT_INFERENCE_STEPS = 52
 # Slightly below max: very high CFG often worsens identity drift / face morphing in I2V.
 DEFAULT_GUIDANCE_SCALE = 3.85
@@ -86,8 +86,9 @@ class LtxVideoGenerator:
 
     @staticmethod
     def _upscale_target_size(raw_w: int, raw_h: int, min_w: Optional[int] = None, min_h: Optional[int] = None) -> tuple[int, int]:
-        mw = int(os.getenv("LTX_MIN_WIDTH", "1408")) if min_w is None else int(min_w)
-        mh = int(os.getenv("LTX_MIN_HEIGHT", "768")) if min_h is None else int(min_h)
+        # Native LTX-Video training resolution is ~768x512. Forcing 1408 causes severe artifacts.
+        mw = int(os.getenv("LTX_MIN_WIDTH", "768")) if min_w is None else int(min_w)
+        mh = int(os.getenv("LTX_MIN_HEIGHT", "512")) if min_h is None else int(min_h)
         mw = max(256, (mw // 32) * 32)
         mh = max(256, (mh // 32) * 32)
         scale = max(mw / max(raw_w, 1), mh / max(raw_h, 1), 1.0)
